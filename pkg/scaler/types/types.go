@@ -1,6 +1,6 @@
 package types
 
 type Resource struct {
-	Cpu    uint32
+	Cpu    uint64
 	Memory uint64
 }

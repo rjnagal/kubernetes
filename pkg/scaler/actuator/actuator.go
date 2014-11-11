@@ -1,18 +1,22 @@
 package actuator
 
 import (
-// Import the actuator api once its ready.
+	"fmt"
 )
 
 type realActuator struct {
 }
 
-func (self *realActuator) GetNodeShapes() ([]NodeShape, error) {
-	return []NodeShape{}, nil
+func (self *realActuator) GetNodeShapes() (NodeShapes, error) {
+	return newNodeShapes(), nil
 }
 
-func (self *realActuator) CreateNewNodes(nodeShape []NodeShape) error {
-	return nil
+func (self *realActuator) GetDefaultNodeShape() (NodeShape, error) {
+	return NodeShape{}, nil
+}
+
+func (self *realActuator) CreateNode(nodeShapeName string) (string, error) {
+	return "", fmt.Errorf("unimplemented")
 }
 
 func New() Actuator {
