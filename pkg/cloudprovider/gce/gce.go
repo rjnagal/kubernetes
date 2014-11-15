@@ -31,6 +31,7 @@ import (
 	"code.google.com/p/goauth2/compute/serviceaccount"
 	compute "code.google.com/p/google-api-go-client/compute/v1"
 	container "code.google.com/p/google-api-go-client/container/v1beta1"
+	"github.com/GoogleCloudPlatform/gcloud-golang/compute/metadata"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/cloudprovider"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/resources"
@@ -45,10 +46,19 @@ type GCECloud struct {
 	projectID        string
 	zone             string
 	instanceID       string
+
+	// GCE image URL for new nodes.
+	image string
+
+	// Tag to place on all minions.
+	minionTag string
+
+	// Hostname of the master.
+	master string
 }
 
 func init() {
-	cloudprovider.RegisterCloudProvider("gce", func(config io.Reader) (cloudprovider.Interface, error) { return newGCECloud() })
+	cloudprovider.RegisterCloudProvider("gce", func(config io.Reader) (cloudprovider.Interface, error) { return NewGCECloud() })
 }
 
 func getMetadata(url string) (string, error) {
@@ -97,7 +107,7 @@ func getInstanceID() (string, error) {
 }
 
 // newGCECloud creates a new instance of GCECloud.
-func newGCECloud() (*GCECloud, error) {
+func NewGCECloud() (*GCECloud, error) {
 	projectID, zone, err := getProjectAndZone()
 	if err != nil {
 		return nil, err
@@ -127,6 +137,10 @@ func newGCECloud() (*GCECloud, error) {
 		projectID:        projectID,
 		zone:             zone,
 		instanceID:       instanceID,
+		// TODO(vmarmol): Make these flags.
+		image:     fmt.Sprintf("https://clients6.google.com/compute/v1/projects/%s/global/images/%s", "google-containers", "container-vm-v20141016"),
+		minionTag: "kubernetes-minion",
+		master:    "kubernetes-master",
 	}, nil
 }
 
@@ -185,12 +199,38 @@ func (gce *GCECloud) makeTargetPool(name, region string, hosts []string, affinit
 	return link, nil
 }
 
+func (gce *GCECloud) waitForGlobalOp(op *compute.Operation) error {
+	pollOp := op
+	for pollOp.Status != "DONE" {
+		var err error
+		time.Sleep(time.Second * 2)
+		pollOp, err = gce.service.GlobalOperations.Get(gce.projectID, op.Name).Do()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (gce *GCECloud) waitForRegionOp(op *compute.Operation, region string) error {
 	pollOp := op
 	for pollOp.Status != "DONE" {
 		var err error
 		time.Sleep(time.Second * 10)
 		pollOp, err = gce.service.RegionOperations.Get(gce.projectID, region, op.Name).Do()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (gce *GCECloud) waitForZoneOp(op *compute.Operation) error {
+	pollOp := op
+	for pollOp.Status != "DONE" {
+		var err error
+		time.Sleep(time.Second * 2)
+		pollOp, err = gce.service.ZoneOperations.Get(gce.projectID, gce.zone, op.Name).Do()
 		if err != nil {
 			return err
 		}
@@ -359,25 +399,238 @@ func (gce *GCECloud) GetNodeResources(name string) (*api.NodeResources, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch canonicalizeMachineType(res.MachineType) {
-	case "f1-micro":
-		return makeResources(1, 0.6), nil
-	case "g1-small":
-		return makeResources(1, 1.70), nil
-	case "n1-standard-1":
-		return makeResources(1, 3.75), nil
-	case "n1-standard-2":
-		return makeResources(2, 7.5), nil
-	case "n1-standard-4":
-		return makeResources(4, 15), nil
-	case "n1-standard-8":
-		return makeResources(8, 30), nil
-	case "n1-standard-16":
-		return makeResources(16, 30), nil
-	default:
-		glog.Errorf("unknown machine: %s", res.MachineType)
-		return nil, nil
+
+	// Get existing instance types.
+	instanceTypes, err := gce.InstanceTypes()
+	if err != nil {
+		return nil, err
 	}
+
+	if res, ok := instanceTypes[canonicalizeMachineType(res.MachineType)]; ok {
+		return &res, nil
+	}
+
+	glog.Errorf("unknown machine: %s", res.MachineType)
+	return nil, nil
+}
+
+// TODO(vmarmol): Reuse the existing script..
+var metadataConfig = `
+#! /bin/bash
+MASTER_NAME='%s'
+MINION_IP_RANGE='%s'
+
+download-or-bust() {
+  until [[ -e "${1##*/}" ]]; do
+    echo "Downloading binary release tar"
+    curl --ipv4 -LO --connect-timeout 20 --retry 6 --retry-delay 10 "$1"
+  done
+}
+
+install-salt() {
+  apt-get update
+
+  mkdir -p /var/cache/salt-install
+  cd /var/cache/salt-install
+
+  TARS=(
+    libzmq3_3.2.3+dfsg-1~bpo70~dst+1_amd64.deb
+    python-zmq_13.1.0-1~bpo70~dst+1_amd64.deb
+    salt-common_2014.1.13+ds-1~bpo70+1_all.deb
+    salt-minion_2014.1.13+ds-1~bpo70+1_all.deb
+  )
+  if [[ ${1-} == '--master' ]]; then
+    TARS+=(salt-master_2014.1.13+ds-1~bpo70+1_all.deb)
+  fi
+  URL_BASE="https://storage.googleapis.com/kubernetes-release/salt"
+
+  for tar in "${TARS[@]}"; do
+    download-or-bust "${URL_BASE}/${tar}"
+    dpkg -i "${tar}"
+  done
+
+  # This will install any of the unmet dependencies from above.
+  apt-get install -f -y
+
+}
+
+# The repositories are really slow and there are GCE mirrors
+sed -i -e "\|^deb.*http://http.debian.net/debian| s/^/#/" /etc/apt/sources.list
+sed -i -e "\|^deb.*http://ftp.debian.org/debian| s/^/#/" /etc/apt/sources.list.d/backports.list
+
+# Prepopulate the name of the Master
+mkdir -p /etc/salt/minion.d
+echo "master: $MASTER_NAME" > /etc/salt/minion.d/master.conf
+
+cat <<EOF >/etc/salt/minion.d/log-level-debug.conf
+log_level: debug
+log_level_logfile: debug
+EOF
+
+# Our minions will have a pool role to distinguish them from the master.
+cat <<EOF >/etc/salt/minion.d/grains.conf
+grains:
+  roles:
+    - kubernetes-pool
+  cbr-cidr: $MINION_IP_RANGE
+  cloud: gce
+EOF
+
+install-salt
+
+# Wait a few minutes and trigger another Salt run to better recover from
+# any transient errors.
+echo "Sleeping 180"
+sleep 180
+salt-call state.highstate || true
+`
+
+func (gce *GCECloud) Add(name, ipRange, instanceType string) error {
+	// Verify instance type.
+	instanceTypes, err := gce.InstanceTypes()
+	if err != nil {
+		return err
+	}
+	if _, ok := instanceTypes[instanceType]; !ok {
+		return fmt.Errorf("unknown instance type %q", instanceType)
+	}
+
+	// Write config file.
+	startupScript := fmt.Sprintf(metadataConfig, gce.master, ipRange)
+
+	// Add firewall.
+	network := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", gce.projectID, "default")
+	firewall := compute.Firewall{
+		Name:         fmt.Sprintf("%s-all", name),
+		Network:      network,
+		SourceRanges: []string{ipRange},
+	}
+
+	// Add all the allowed protocols to the firewall.
+	for _, protocol := range []string{"tcp", "udp", "icmp", "esp", "ah", "sctp"} {
+		firewall.Allowed = append(firewall.Allowed, &compute.FirewallAllowed{
+			IPProtocol: protocol,
+		})
+	}
+	firewallCall := gce.service.Firewalls.Insert(gce.projectID, &firewall)
+	firewallOp, err := firewallCall.Do()
+	if err != nil {
+		return fmt.Errorf("failed to add firewall with error: %v", err)
+	}
+	err = gce.waitForGlobalOp(firewallOp)
+	if err != nil {
+		return fmt.Errorf("failed to add firewall while waiting for completion with error: %v", err)
+	}
+
+	newDisk := compute.Disk{
+		Name: name,
+		// TODO(vmarmol): Make disk size configurable.
+		SizeGb: 10,
+		Type:   fmt.Sprintf("https://clients6.google.com/compute/v1/projects/%s/zones/%s/diskTypes/pd-standard", gce.projectID, gce.zone),
+	}
+	diskCall := gce.service.Disks.Insert(gce.projectID, gce.zone, &newDisk)
+	diskCall.SourceImage(gce.image)
+	diskOp, err := diskCall.Do()
+	if err != nil {
+		return fmt.Errorf("failed to add disk with error: %v", err)
+	}
+	err = gce.waitForZoneOp(diskOp)
+	if err != nil {
+		return fmt.Errorf("failed to add disk while waiting for completion with error: %v", err)
+	}
+
+	// Add instance.
+	serviceAccount, err := metadata.Get("instance/service-accounts/default/email")
+	if err != nil {
+		return err
+	}
+	newInstance := compute.Instance{
+		CanIpForward: true,
+		Disks: []*compute.AttachedDisk{
+			&compute.AttachedDisk{
+				Boot:       true,
+				DeviceName: name,
+				Mode:       "READ_WRITE",
+				Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", gce.projectID, gce.zone, name),
+				Type:       "PERSISTENT",
+			},
+		},
+		MachineType: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/machineTypes/%s", gce.projectID, gce.zone, instanceType),
+		Metadata: &compute.Metadata{
+			Items: []*compute.MetadataItems{
+				&compute.MetadataItems{
+					Key:   "startup-script",
+					Value: startupScript,
+				},
+			},
+		},
+		Name: name,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			&compute.NetworkInterface{
+				AccessConfigs: []*compute.AccessConfig{
+					&compute.AccessConfig{
+						Name: "External NAT",
+						Type: "ONE_TO_ONE_NAT",
+					},
+				},
+				Network: network,
+			},
+		},
+		Scheduling: &compute.Scheduling{
+			AutomaticRestart:  true,
+			OnHostMaintenance: "MIGRATE",
+		},
+		ServiceAccounts: []*compute.ServiceAccount{
+			&compute.ServiceAccount{
+				Email:  serviceAccount,
+				Scopes: []string{"https://www.googleapis.com/auth/compute"},
+			},
+		},
+		Tags: &compute.Tags{
+			Items: []string{gce.minionTag},
+		},
+	}
+	instanceCall := gce.service.Instances.Insert(gce.projectID, gce.zone, &newInstance)
+	instanceOp, err := instanceCall.Do()
+	if err != nil {
+		return fmt.Errorf("failed to add instance with error: %v", err)
+	}
+	err = gce.waitForZoneOp(instanceOp)
+	if err != nil {
+		return fmt.Errorf("failed to add instance while waiting for completion with error: %v", err)
+	}
+
+	newRoute := compute.Route{
+		Name:            name,
+		Network:         network,
+		DestRange:       ipRange,
+		Priority:        1000,
+		NextHopInstance: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", gce.projectID, gce.zone, name),
+	}
+	routeCall := gce.service.Routes.Insert(gce.projectID, &newRoute)
+	routeOp, err := routeCall.Do()
+	if err != nil {
+		return fmt.Errorf("failed to add route with error: %v", err)
+	}
+	err = gce.waitForGlobalOp(routeOp)
+	if err != nil {
+		return fmt.Errorf("failed to add route while waiting for completion with error: %v", err)
+	}
+
+	return nil
+}
+
+func (gce *GCECloud) InstanceTypes() (map[string]api.NodeResources, error) {
+	// TODO: Get this dynamically.
+	return map[string]api.NodeResources{
+		"f1-micro":       *makeResources(1, 0.6),
+		"g1-small":       *makeResources(1, 1.70),
+		"n1-standard-1":  *makeResources(1, 3.75),
+		"n1-standard-2":  *makeResources(2, 7.5),
+		"n1-standard-4":  *makeResources(4, 15),
+		"n1-standard-8":  *makeResources(8, 30),
+		"n1-standard-16": *makeResources(16, 60),
+	}, nil
 }
 
 func (gce *GCECloud) GetZone() (cloudprovider.Zone, error) {

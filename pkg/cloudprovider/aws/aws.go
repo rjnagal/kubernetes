@@ -188,3 +188,11 @@ func (aws *AWSCloud) List(filter string) ([]string, error) {
 func (v *AWSCloud) GetNodeResources(name string) (*api.NodeResources, error) {
 	return nil, nil
 }
+
+func (v *AWSCloud) Add(name, ipRange, instanceType string) error {
+	return fmt.Errorf("Add() unimplemented")
+}
+
+func (v *AWSCloud) InstanceTypes() (map[string]api.NodeResources, error) {
+	return nil, fmt.Errorf("InstanceTypes() unimplemented")
+}

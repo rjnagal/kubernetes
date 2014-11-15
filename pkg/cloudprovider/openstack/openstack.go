@@ -342,6 +342,14 @@ func (os *OpenStack) Clusters() (cloudprovider.Clusters, bool) {
 	return nil, false
 }
 
+func (i *Instances) Add(name, ipRange, instanceType string) error {
+	return fmt.Errorf("Add() unimplemented")
+}
+
+func (i *Instances) InstanceTypes() (map[string]api.NodeResources, error) {
+	return nil, fmt.Errorf("InstanceTypes() unimplemented")
+}
+
 type LoadBalancer struct {
 	network *gophercloud.ServiceClient
 	compute *gophercloud.ServiceClient

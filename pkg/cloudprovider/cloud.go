@@ -63,6 +63,10 @@ type Instances interface {
 	List(filter string) ([]string, error)
 	// GetNodeResources gets the resources for a particular node
 	GetNodeResources(name string) (*api.NodeResources, error)
+	// Add an instance of the specified type. The type must be as returned from InstanceTypes().
+	Add(name, ipRange, instanceType string) error
+	// Returns the set of supported instance types and their size.
+	InstanceTypes() (map[string]api.NodeResources, error)
 }
 
 // Zone represents the location of a particular machine.

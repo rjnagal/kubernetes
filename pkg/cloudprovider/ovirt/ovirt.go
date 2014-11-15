@@ -163,3 +163,11 @@ func (v *OVirtCloud) List(filter string) ([]string, error) {
 func (v *OVirtCloud) GetNodeResources(name string) (*api.NodeResources, error) {
 	return nil, nil
 }
+
+func (v *OVirtCloud) Add(name, ipRange, instanceType string) error {
+	return fmt.Errorf("Add() unimplemented")
+}
+
+func (v *OVirtCloud) InstanceTypes() (map[string]api.NodeResources, error) {
+	return nil, fmt.Errorf("InstanceTypes() unimplemented")
+}

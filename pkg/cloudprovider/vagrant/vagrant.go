@@ -218,3 +218,11 @@ func (v *VagrantCloud) List(filter string) ([]string, error) {
 func (v *VagrantCloud) GetNodeResources(name string) (*api.NodeResources, error) {
 	return nil, nil
 }
+
+func (v *VagrantCloud) Add(name, ipRange, instanceType string) error {
+	return fmt.Errorf("Add() unimplemented")
+}
+
+func (v *VagrantCloud) InstanceTypes() (map[string]api.NodeResources, error) {
+	return nil, fmt.Errorf("InstanceTypes() unimplemented")
+}
