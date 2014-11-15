@@ -523,8 +523,8 @@ func (gce *GCECloud) Add(name, ipRange, instanceType string) error {
 	}
 
 	newDisk := compute.Disk{
+		Name: name,
 		// TODO(vmarmol): Make disk size configurable.
-		Name:   name,
 		SizeGb: 10,
 		Type:   fmt.Sprintf("https://clients6.google.com/compute/v1/projects/%s/zones/%s/diskTypes/pd-standard", gce.projectID, gce.zone),
 	}
