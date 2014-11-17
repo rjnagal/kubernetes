@@ -90,7 +90,10 @@ func (self *realAutoScaler) applyPolicies(hostnameToNodesMap map[string]aggregat
 }
 
 func New() (Scaler, error) {
-	myActuator := actuator.New()
+	myActuator, err := actuator.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create actuator %q", err)
+	}
 	nodeShapes, err := myActuator.GetNodeShapes()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing node shapes %q", err)
