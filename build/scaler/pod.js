@@ -7,6 +7,9 @@
 	    "version": "v1beta1",
 	    "id": "AutoScaler",
 	    "containers": [{
+		"name": "provisioner",
+		"image": "vish/provisioner:test",
+	    }, {
 		"name": "scaler",
 		"image": "vish/scaler:test",
 	    }]
