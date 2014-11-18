@@ -3,6 +3,7 @@ package provisioner
 import (
 	"fmt"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/cloudprovider"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/cloudprovider/gce"
 	"github.com/golang/glog"
@@ -13,8 +14,8 @@ type Provisioner interface {
 	// Those that are created will be returned alongside the error.
 	AddInstances(request AddInstancesRequest) ([]Instance, error)
 
-	// Gets a list of the types of instances available.
-	InstanceTypes() ([]string, error)
+	// Gets a list of the types of instances available and their corresponding capacity.
+	InstanceTypes() (map[string]api.NodeResources, error)
 
 	// Returns the "default" instance type.
 	DefaultInstanceType() (string, error)
@@ -94,19 +95,8 @@ func (self *prov) AddInstances(request AddInstancesRequest) ([]Instance, error) 
 	return newInstances, nil
 }
 
-func (self *prov) InstanceTypes() ([]string, error) {
-	instanceTypes, err := self.instances.InstanceTypes()
-	if err != nil {
-		return []string{}, err
-	}
-
-	// Get a list of just the type names.
-	typeNames := make([]string, 0, len(instanceTypes))
-	for name, _ := range instanceTypes {
-		typeNames = append(typeNames, name)
-	}
-
-	return typeNames, nil
+func (self *prov) InstanceTypes() (map[string]api.NodeResources, error) {
+	return self.instances.InstanceTypes()
 }
 
 func (self *prov) DefaultInstanceType() (string, error) {
