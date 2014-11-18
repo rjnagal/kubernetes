@@ -12,6 +12,12 @@ type Provisioner interface {
 	// Add an instance of the specified type. In the case of an error, some instances may already have been created.
 	// Those that are created will be returned alongside the error.
 	AddInstances(request AddInstancesRequest) ([]Instance, error)
+
+	// Gets a list of the types of instances available.
+	InstanceTypes() ([]string, error)
+
+	// Returns the "default" instance type.
+	DefaultInstanceType() (string, error)
 }
 
 // TODO(vmarmol): This may need to be generic size and we chose the type according to what is available.
@@ -25,27 +31,43 @@ type Instance struct {
 	InstanceType string `json:"instance_type,omitempty"`
 }
 
-func New() (Provisioner, error) {
+func New(defaultInstanceType string) (Provisioner, error) {
 	// TODO(vmarmol): Make this generically for any provider.
 	gce, err := gce_cloud.NewGCECloud()
 	if err != nil {
 		return nil, err
 	}
+	instances, valid := gce.Instances()
+	if !valid {
+		return nil, fmt.Errorf("instance requests are not valid for the current cloud provider")
+	}
+
+	// Verify that the default instance type exists
+	instanceTypes, err := instances.InstanceTypes()
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := instanceTypes[defaultInstanceType]; !ok {
+		return nil, fmt.Errorf("default instance type %q is not a valid instance type")
+	}
 
 	return &prov{
-		cloudProvider: gce,
+		cloudProvider:       gce,
+		instances:           instances,
+		defaultInstanceType: defaultInstanceType,
 	}, nil
 }
 
 type prov struct {
-	cloudProvider cloudprovider.Interface
+	cloudProvider       cloudprovider.Interface
+	instances           cloudprovider.Instances
+	defaultInstanceType string
 }
 
 func (self *prov) AddInstances(request AddInstancesRequest) ([]Instance, error) {
 	// TODO(vmarmol): Improve this logic.
 	// Get a instance ID, assume they are created sequencially.
-	instances, _ := self.cloudProvider.Instances()
-	machs, err := instances.List("kubernetes-minion.+")
+	machs, err := self.instances.List("kubernetes-minion.+")
 	if err != nil {
 		return []Instance{}, err
 	}
@@ -58,7 +80,7 @@ func (self *prov) AddInstances(request AddInstancesRequest) ([]Instance, error) 
 		instanceName := fmt.Sprintf("kubernetes-minion-%d", instanceId)
 		instanceIpRange := fmt.Sprintf("10.244.%d.0/24", instanceId)
 		glog.Infof("Adding instance %q with IP range %q", instanceName, instanceIpRange)
-		err := instances.Add(instanceName, instanceIpRange, instanceType)
+		err := self.instances.Add(instanceName, instanceIpRange, instanceType)
 		if err != nil {
 			return newInstances, err
 		}
@@ -70,4 +92,23 @@ func (self *prov) AddInstances(request AddInstancesRequest) ([]Instance, error) 
 	}
 
 	return newInstances, nil
+}
+
+func (self *prov) InstanceTypes() ([]string, error) {
+	instanceTypes, err := self.instances.InstanceTypes()
+	if err != nil {
+		return []string{}, err
+	}
+
+	// Get a list of just the type names.
+	typeNames := make([]string, 0, len(instanceTypes))
+	for name, _ := range instanceTypes {
+		typeNames = append(typeNames, name)
+	}
+
+	return typeNames, nil
+}
+
+func (self *prov) DefaultInstanceType() (string, error) {
+	return self.defaultInstanceType, nil
 }

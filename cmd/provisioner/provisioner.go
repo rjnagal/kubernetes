@@ -13,6 +13,7 @@ import (
 
 var listenIp = flag.String("listen_ip", "", "The IP to listen on for connections")
 var port = flag.Int("port", 8080, "The port to listen on for connections")
+var defaultInstanceType = flag.String("default_instance_type", "n1-standard-1", "The default instance type to create")
 
 // Parse the request from the HTTP body.
 func getAddInstancesRequest(body io.ReadCloser) (provisioner.AddInstancesRequest, error) {
@@ -26,6 +27,7 @@ func getAddInstancesRequest(body io.ReadCloser) (provisioner.AddInstancesRequest
 	return request, nil
 }
 
+// Write the specified responce to the HTTP output stream.
 func writeResult(res interface{}, w http.ResponseWriter) error {
 	out, err := json.Marshal(res)
 	if err != nil {
@@ -40,7 +42,7 @@ func writeResult(res interface{}, w http.ResponseWriter) error {
 func main() {
 	flag.Parse()
 
-	prov, err := provisioner.New()
+	prov, err := provisioner.New(*defaultInstanceType)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -52,7 +54,7 @@ func main() {
 			return
 		}
 
-		glog.Infof("Request to create %d instances: %v", len(request.InstanceTypes), request.InstanceTypes)
+		glog.V(1).Infof("[/instances]: %v", request.InstanceTypes)
 		newInstances, err := prov.AddInstances(request)
 		if err != nil {
 			// TODO(vmarmol): Write the created instances.
@@ -61,6 +63,30 @@ func main() {
 		}
 
 		writeResult(newInstances, w)
+		return
+	})
+
+	http.HandleFunc("/instance_types/default", func(w http.ResponseWriter, r *http.Request) {
+		instanceType, err := prov.DefaultInstanceType()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		glog.V(1).Infof("[/instance_types/default]: %v", instanceType)
+		writeResult(instanceType, w)
+		return
+	})
+
+	http.HandleFunc("/instance_types", func(w http.ResponseWriter, r *http.Request) {
+		instanceTypes, err := prov.InstanceTypes()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		glog.V(1).Infof("[/instance_types]: %v", instanceTypes)
+		writeResult(instanceTypes, w)
 		return
 	})
 
