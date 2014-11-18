@@ -1,4 +1,4 @@
-package core
+package scaler
 
 import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/scaler/actuator"
