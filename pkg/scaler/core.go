@@ -61,7 +61,7 @@ func (self *realAutoScaler) doHousekeeping() error {
 func (self *realAutoScaler) applyPolicies(hostnameToNodesMap map[string]aggregator.Node) (*Cluster, error) {
 	clusterNodes := make(map[string]Node, 0)
 	for _, node := range hostnameToNodesMap {
-		nodeShape, err := self.nodeShapes.GetNodeShape(node.Capacity)
+		nodeShape, err := self.nodeShapes.Get(node.Capacity)
 		if err != nil {
 			glog.Fatal(err)
 		}
@@ -98,10 +98,12 @@ func New() (Scaler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing node shapes %q", err)
 	}
+	glog.V(2).Infof("Available node shapes are: %v", nodeShapes)
 	defaultNodeShape, err := myActuator.GetDefaultNodeShape()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get default node shape %q", err)
 	}
+	glog.V(2).Infof("Default node shape is: %v", defaultNodeShape)
 	// List policies in the order of increasing priority
 	policies := map[string]Policy{
 		"ClusterUsage": &clusterUsagePolicy{},
