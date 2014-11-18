@@ -115,5 +115,7 @@ func New() (Scaler, error) {
 		actuator:         myActuator,
 		nodeShapes:       nodeShapes,
 		defaultNodeShape: defaultNodeShape,
+		existingNodes: make(map[string]Node),
+		newNodes: make(map[string]string),
 	}, nil
 }
