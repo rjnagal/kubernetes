@@ -5,6 +5,5 @@ MAINTAINER vishnuk@google.com
 ADD scaler /usr/bin/scaler
 RUN chmod +x /usr/bin/scaler
 
-ENTRYPOINT ["/usr/bin/scaler"]
-
+CMD ["/usr/bin/scaler", "-logtostderr"]
 
