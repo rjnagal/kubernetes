@@ -28,7 +28,7 @@ func (self *clusterUsagePolicy) PerformScaling(cluster *Cluster) error {
 		cluster.Slack.Cpu += (node.Capacity.Cpu - node.Usage.Cpu)
 		cluster.Slack.Memory += (node.Capacity.Memory - node.Usage.Memory)
 	}
-	if PercentageOf(uint64(nodesAboveThreshold), uint64(len(cluster.Current))) > self.threshold {
+	if nodesAboveThreshold > 0 && PercentageOf(uint64(nodesAboveThreshold), uint64(len(cluster.Current))) > self.threshold {
 		if len(cluster.New) == 0 {
 			// A previous policy might have increased the cluster size. We do not want to increase it further here.
 			glog.Infof("%d nodes in the cluster are above their threshold resource usage. Increasing cluster size by one node.", nodesAboveThreshold)

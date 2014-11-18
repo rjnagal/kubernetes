@@ -34,8 +34,8 @@ func PostRequestAndGetResponse(url string, data, response interface{}) error {
 		return err
 	}
 	glog.V(2).Infof("Url: %s, Request: %v, Response: %s", url, data, body)
-	if err = json.Unmarshal(body, data); err != nil {
-		err = fmt.Errorf("unable to unmarshal %v (%v): %v", string(body), err)
+	if err = json.Unmarshal(body, response); err != nil {
+		err = fmt.Errorf("unable to unmarshal %v: %v", string(body), err)
 		return err
 	}
 	return nil
