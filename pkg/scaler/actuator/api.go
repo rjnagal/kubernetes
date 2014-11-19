@@ -28,14 +28,14 @@ type NodeShapes struct {
 }
 
 // Returns a node shape if 'capacity' maps to a legal node shape, error otherwise.
-func (self *NodeShapes) GetNodeShape(capacity types.Resource) (NodeShape, error) {
+func (self *NodeShapes) Get(capacity types.Resource) (NodeShape, error) {
 	if nodeShape, ok := self.nodeShapes[capacity]; ok {
 		return nodeShape, nil
 	}
 	return NodeShape{}, fmt.Errorf("unrecognized node shape with capacity: %+v", capacity)
 }
 
-func (self *NodeShapes) addNodeShape(nodeShape NodeShape) {
+func (self *NodeShapes) add(nodeShape NodeShape) {
 	self.nodeShapes[nodeShape.Capacity] = nodeShape
 }
 
