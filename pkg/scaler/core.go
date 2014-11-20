@@ -94,6 +94,10 @@ func New() (Scaler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create actuator %q", err)
 	}
+	myAggregator, err := aggregator.New()
+	if err != nil {
+		return nil, err
+	}
 	nodeShapes, err := myActuator.GetNodeShapes()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing node shapes %q", err)
@@ -111,11 +115,11 @@ func New() (Scaler, error) {
 
 	return &realAutoScaler{
 		policies:         policies,
-		aggregator:       aggregator.New(),
+		aggregator:       myAggregator,
 		actuator:         myActuator,
 		nodeShapes:       nodeShapes,
 		defaultNodeShape: defaultNodeShape,
-		existingNodes: make(map[string]Node),
-		newNodes: make(map[string]string),
+		existingNodes:    make(map[string]Node),
+		newNodes:         make(map[string]string),
 	}, nil
 }
