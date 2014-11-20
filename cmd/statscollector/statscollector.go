@@ -26,7 +26,7 @@ import (
 	"github.com/golang/glog"
 )
 
-var address = flag.String("address", "", "The IP address for serving stats.")
+var address = flag.String("address", "0.0.0.0", "The IP address for serving stats.")
 var port = flag.Int("port", 8085, "The port to listen on for connections.")
 var fake = flag.Bool("fake", false, "Use fake services.")
 
@@ -64,7 +64,7 @@ func main() {
 			glog.Fatal(err)
 		}
 	} else {
-		clusterApi, err = statscollector.NewKubeCluster()
+		clusterApi, err = statscollector.NewCluster()
 		if err != nil {
 			glog.Fatal(err)
 		}

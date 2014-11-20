@@ -39,7 +39,7 @@ type kubeCluster struct {
 	dataLock  sync.RWMutex
 }
 
-func NewKubeCluster() (Cluster, error) {
+func NewCluster() (Cluster, error) {
 	if len(*kubeMaster) == 0 {
 		return nil, fmt.Errorf("--kubernetes_master not specified")
 	}
@@ -54,6 +54,7 @@ func NewKubeCluster() (Cluster, error) {
 	}, nil
 }
 
+// TODO(jnagal): Refactor this code in heapster and share.
 func (self *kubeCluster) GetNodesList() ([]NodeId, error) {
 	self.dataLock.Lock()
 	defer self.dataLock.Lock()

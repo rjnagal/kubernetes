@@ -48,11 +48,7 @@ func NewKubeNodeApi() (NodeApi, error) {
 	return &nodeApi{}, nil
 }
 
-func PostRequestAndGetValue(client *http.Client, req *http.Request, value interface{}) error {
-	response, err := client.Do(req)
-	if err != nil {
-		return err
-	}
+func GetValueFromResponse(response *http.Response, value interface{}) error {
 	defer response.Body.Close()
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
@@ -72,11 +68,11 @@ func getKubeletAddress(id NodeId) string {
 func (self *nodeApi) MachineSpec(id NodeId) (Capacity, error) {
 	var machineInfo cadvisor.MachineInfo
 	url := getKubeletAddress(id) + "/spec"
-	req, err := http.NewRequest("GET", url, nil)
+	resp, err := http.Get(url)
 	if err != nil {
 		return Capacity{}, err
 	}
-	err = PostRequestAndGetValue(&http.Client{}, req, &machineInfo)
+	err = GetValueFromResponse(resp, &machineInfo)
 	if err != nil {
 		glog.Errorf("Getting machine stats for minion %s with ip %s failed - %s\n", id.Name, id.Address, err)
 		return Capacity{}, err
@@ -93,11 +89,11 @@ func getMachineStats(id NodeId) ([]*cadvisor.ContainerStats, error) {
 	values := url.Values{}
 	values.Add("num_stats", strconv.Itoa(*numStatsPerUpdate))
 	url := getKubeletAddress(id) + "/stats" + "?" + values.Encode()
-	req, err := http.NewRequest("GET", url, nil)
+	resp, err := http.Get(url)
 	if err != nil {
 		return []*cadvisor.ContainerStats{}, err
 	}
-	err = PostRequestAndGetValue(&http.Client{}, req, &containerInfo)
+	err = GetValueFromResponse(resp, &containerInfo)
 	if err != nil {
 		glog.Errorf("Updating Stats for minion %s with ip %s failed - %s\n", id.Name, id.Address, err)
 		return []*cadvisor.ContainerStats{}, err
@@ -139,15 +135,15 @@ func (a uint64Slice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a uint64Slice) Less(i, j int) bool { return a[i] < a[j] }
 
 func GetPercentiles(stats []*cadvisor.ContainerStats) (Percentiles, Percentiles) {
-	last_cpu := uint64(0)
-	var last_time time.Time
-	memory_samples := make(uint64Slice, len(stats))
-	cpu_samples := make(uint64Slice, len(stats)-1)
-	num_samples := 0
+	lastCpu := uint64(0)
+	var lastTime time.Time
+	memorySamples := make(uint64Slice, len(stats))
+	cpuSamples := make(uint64Slice, len(stats)-1)
+	numSamples := 0
 	memoryPercentiles := Percentiles{}
 	cpuPercentiles := Percentiles{}
 	for _, stat := range stats {
-		num_samples++
+		numSamples++
 		cpuNs := stat.Cpu.Usage.Total
 		time := stat.Timestamp
 		// Ignore actual usage and only focus on working set.
@@ -155,29 +151,29 @@ func GetPercentiles(stats []*cadvisor.ContainerStats) (Percentiles, Percentiles)
 		if memory > memoryPercentiles.Max {
 			memoryPercentiles.Max = memory
 		}
-		memoryPercentiles.Mean = GetMean(memoryPercentiles.Mean, memory, uint64(num_samples))
-		memory_samples = append(memory_samples, memory)
-		if last_cpu == 0 {
-			last_cpu = cpuNs
-			last_time = time
+		memoryPercentiles.Mean = GetMean(memoryPercentiles.Mean, memory, uint64(numSamples))
+		memorySamples = append(memorySamples, memory)
+		if lastCpu == 0 {
+			lastCpu = cpuNs
+			lastTime = time
 			continue
 		}
-		elapsed := time.Nanosecond() - last_time.Nanosecond()
+		elapsed := time.Nanosecond() - lastTime.Nanosecond()
 		if elapsed < 10*milliSecondsToNanoSeconds {
 			continue
 		}
-		cpu_rate := (cpuNs - last_cpu) * secondsToMilliSeconds / uint64(elapsed)
-		if cpu_rate < 0 {
+		cpuRate := (cpuNs - lastCpu) * secondsToMilliSeconds / uint64(elapsed)
+		if cpuRate < 0 {
 			continue
 		}
-		cpu_samples = append(cpu_samples, cpu_rate)
-		if cpu_rate > cpuPercentiles.Max {
-			cpuPercentiles.Max = cpu_rate
+		cpuSamples = append(cpuSamples, cpuRate)
+		if cpuRate > cpuPercentiles.Max {
+			cpuPercentiles.Max = cpuRate
 		}
-		cpuPercentiles.Mean = GetMean(cpuPercentiles.Mean, cpu_rate, uint64(num_samples-1))
+		cpuPercentiles.Mean = GetMean(cpuPercentiles.Mean, cpuRate, uint64(numSamples-1))
 	}
-	cpuPercentiles.Ninety = Get90Percentile(cpu_samples)
-	memoryPercentiles.Ninety = Get90Percentile(memory_samples)
+	cpuPercentiles.Ninety = Get90Percentile(cpuSamples)
+	memoryPercentiles.Ninety = Get90Percentile(memorySamples)
 	return cpuPercentiles, memoryPercentiles
 }
 

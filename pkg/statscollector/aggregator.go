@@ -74,7 +74,6 @@ func (self *aggregator) Stop() error {
 	if err != nil {
 		return err
 	}
-	self.housekeepingChan = make(chan error)
 	return nil
 }
 
