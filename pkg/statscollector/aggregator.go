@@ -131,6 +131,8 @@ func (self *aggregator) updateStats() error {
 		resource, err := self.nodeApi.UpdateStats(node.Id)
 		if err != nil {
 			glog.Errorf("Failed to update stats for node %s", node.Id.Name)
+			// Mark old data as stale.
+			node.Stats.MinuteUsage.Valid = false
 			// Drop nodes that have not been updated in the past hour.
 			if time.Since(node.Stats.LastUpdate).Hours() > 1 {
 				glog.Errorf("Node %s presumed dead", node.Id.Name)
@@ -139,6 +141,8 @@ func (self *aggregator) updateStats() error {
 			continue
 		}
 		// TODO: Calculate hour/day stats by storing minute stats.
+		node.Stats.HourUsage.Valid = false
+		node.Stats.DayUsage.Valid = false
 		node.Stats.LastUpdate = time.Now()
 		node.Stats.MinuteUsage = resource
 		if node.Capacity.Cpu == 0 {

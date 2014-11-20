@@ -185,6 +185,7 @@ func (self *nodeApi) UpdateStats(id NodeId) (Resource, error) {
 
 	cpu, memory := GetPercentiles(stats)
 	return Resource{
+		Valid:  true,
 		Cpu:    cpu,
 		Memory: memory,
 	}, nil
@@ -216,6 +217,7 @@ func (self *fakeNodeApi) UpdateStats(id NodeId) (Resource, error) {
 		Ninety: 7516192768,
 	}
 	return Resource{
+		Valid:  true,
 		Cpu:    cpu,
 		Memory: memory,
 	}, nil
