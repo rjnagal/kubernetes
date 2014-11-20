@@ -26,7 +26,7 @@ import (
 	"github.com/golang/glog"
 )
 
-var kubeMaster = flag.String("kubernetes_master", "", "IP for kubernetes master")
+var kubeMaster = flag.String("kubernetes_master_readonly", "", "IP for kubernetes master read-only API.")
 
 type Cluster interface {
 	GetNodesList() ([]NodeId, error)
@@ -41,7 +41,7 @@ type kubeCluster struct {
 
 func NewCluster() (Cluster, error) {
 	if len(*kubeMaster) == 0 {
-		return nil, fmt.Errorf("--kubernetes_master not specified")
+		return nil, fmt.Errorf("--kubernetes_master_readonly not specified")
 	}
 	kubeClient := kube_client.NewOrDie(&kube_client.Config{
 		Host:     "http://" + *kubeMaster,
@@ -57,7 +57,7 @@ func NewCluster() (Cluster, error) {
 // TODO(jnagal): Refactor this code in heapster and share.
 func (self *kubeCluster) GetNodesList() ([]NodeId, error) {
 	self.dataLock.Lock()
-	defer self.dataLock.Lock()
+	defer self.dataLock.Unlock()
 	// Avoid refreshing node list too often.
 	if time.Since(self.lastQuery).Seconds() < 10 {
 		return self.nodesList, nil
