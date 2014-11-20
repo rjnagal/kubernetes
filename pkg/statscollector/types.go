@@ -35,6 +35,8 @@ type Capacity struct {
 }
 
 type Resource struct {
+	// Set to false if data is invalid. eg. when we don't have enough data to report hour/day stats.
+	Valid bool `json:"valid"`
 	// Mean, Max, and 90p cpu rate value in milliCpus/seconds. Converted to milliCpus to avoid floats.
 	Cpu Percentiles `json:"cpu"`
 	// Mean, Max, and 90p memory size in bytes.
