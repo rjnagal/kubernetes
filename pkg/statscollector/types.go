@@ -29,7 +29,7 @@ type Percentiles struct {
 
 type Capacity struct {
 	// Number of available cpus. In milliCpus for consistency.
-	Cpu int `json:"cpu"`
+	Cpu uint64 `json:"cpu"`
 	// Amount of memory in bytes.
 	Memory uint64 `json:"memory"`
 }

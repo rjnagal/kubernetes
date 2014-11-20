@@ -80,7 +80,7 @@ func (self *nodeApi) MachineSpec(id NodeId) (Capacity, error) {
 	return Capacity{
 		Memory: uint64(machineInfo.MemoryCapacity),
 		// Convert cpu to MilliCpus for consistency with other data types.
-		Cpu: machineInfo.NumCores * 1000,
+		Cpu: uint64(machineInfo.NumCores) * 1000,
 	}, nil
 }
 
@@ -151,6 +151,7 @@ func GetPercentiles(stats []*cadvisor.ContainerStats) (Percentiles, Percentiles)
 		if memory > memoryPercentiles.Max {
 			memoryPercentiles.Max = memory
 		}
+		glog.V(2).Infof("Read sample: cpu %d, memory %d", cpuNs, memory)
 		memoryPercentiles.Mean = GetMean(memoryPercentiles.Mean, memory, uint64(numSamples))
 		memorySamples = append(memorySamples, memory)
 		if lastCpu == 0 {
@@ -158,14 +159,19 @@ func GetPercentiles(stats []*cadvisor.ContainerStats) (Percentiles, Percentiles)
 			lastTime = time
 			continue
 		}
-		elapsed := time.Nanosecond() - lastTime.Nanosecond()
+		elapsed := time.UnixNano() - lastTime.UnixNano()
 		if elapsed < 10*milliSecondsToNanoSeconds {
+			glog.Infof("Elasped time too small: %d ns: time now %s last %s", elapsed, time.String(), lastTime.String())
 			continue
 		}
 		cpuRate := (cpuNs - lastCpu) * secondsToMilliSeconds / uint64(elapsed)
 		if cpuRate < 0 {
+			glog.Infof("cpu rate too small: %f ns", cpuRate)
 			continue
 		}
+		glog.V(2).Infof("Adding cpu rate sample : %d", cpuRate)
+		lastCpu = cpuNs
+		lastTime = time
 		cpuSamples = append(cpuSamples, cpuRate)
 		if cpuRate > cpuPercentiles.Max {
 			cpuPercentiles.Max = cpuRate
