@@ -49,7 +49,7 @@ type NodeId struct {
 	Address string `json:"address"`
 }
 
-type NodeStats struct {
+type DerivedStats struct {
 	// Time since the last stats update. If a node is flaky, we'll keep it in the known node list for an hour.
 	// Update time indicate how stale the stats are from that node.
 	LastUpdate time.Time `json:"last_update"`
@@ -62,7 +62,7 @@ type NodeStats struct {
 }
 
 type NodeData struct {
-	Capacity Capacity  `json:"capacity"`
-	Id       NodeId    `json:"id"`
-	Stats    NodeStats `json:"stats"`
+	Capacity Capacity     `json:"capacity"`
+	Id       NodeId       `json:"id"`
+	Stats    DerivedStats `json:"stats"`
 }
