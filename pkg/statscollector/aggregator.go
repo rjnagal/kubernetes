@@ -123,11 +123,36 @@ func (self *aggregator) detectNodes() error {
 	return nil
 }
 
+func (self *aggregator) fixCpuUsage(capacity Capacity, resource Resource) Resource {
+	// Due to the time difference between recording a timestamp and cpu usage,
+	// cpu rate can go over machine capacity by a fraction. Ceil them off here.
+	if resource.Cpu.Mean > capacity.Cpu {
+		resource.Cpu.Mean = capacity.Cpu
+	}
+	if resource.Cpu.Max > capacity.Cpu {
+		resource.Cpu.Max = capacity.Cpu
+	}
+	if resource.Cpu.Ninety > capacity.Cpu {
+		resource.Cpu.Ninety = capacity.Cpu
+	}
+	return resource
+}
+
 func (self *aggregator) updateStats() error {
 	// TODO(jnagal): Don't hold lock while making client calls.
 	self.dataLock.Lock()
 	defer self.dataLock.Unlock()
 	for _, node := range self.nodes {
+		// Update Capacity before usage.
+		if node.Capacity.Cpu == 0 {
+			glog.Infof("updating capacity for node %s", node.Id.Name)
+			capacity, err := self.nodeApi.MachineSpec(node.Id)
+			if err != nil {
+				glog.Errorf("Failed to update capacity for node %s", node.Id.Name)
+			} else {
+				node.Capacity = capacity
+			}
+		}
 		resource, err := self.nodeApi.UpdateStats(node.Id)
 		if err != nil {
 			glog.Errorf("Failed to update stats for node %s", node.Id.Name)
@@ -140,20 +165,11 @@ func (self *aggregator) updateStats() error {
 			}
 			continue
 		}
+		node.Stats.MinuteUsage = self.fixCpuUsage(node.Capacity, resource)
 		// TODO: Calculate hour/day stats by storing minute stats.
 		node.Stats.HourUsage.Valid = false
 		node.Stats.DayUsage.Valid = false
 		node.Stats.LastUpdate = time.Now()
-		node.Stats.MinuteUsage = resource
-		if node.Capacity.Cpu == 0 {
-			glog.Infof("updating capacity for node %s", node.Id.Name)
-			capacity, err := self.nodeApi.MachineSpec(node.Id)
-			if err != nil {
-				glog.Errorf("Failed to update capacity for node %s", node.Id.Name)
-			} else {
-				node.Capacity = capacity
-			}
-		}
 		self.nodes[node.Id.Name] = node
 	}
 	return nil
