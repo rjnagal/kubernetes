@@ -1,7 +1,6 @@
 package aggregator
 
 import (
-	"flag"
 	"fmt"
 	"strings"
 
@@ -10,14 +9,12 @@ import (
 )
 
 type realAggregator struct {
-	aggregatorAddress string
+	aggregatorHostPort string
 }
-
-var argAggregatorAddress = flag.String("aggregator_address", "localhost:8085", "Aggregator Host:Port.")
 
 func (self *realAggregator) GetClusterInfo() (map[string]Node, error) {
 	var response map[string]statscollector.NodeData
-	if err := types.PostRequestAndGetResponse(fmt.Sprintf("http://%s/stats", self.aggregatorAddress), nil, &response); err != nil {
+	if err := types.PostRequestAndGetResponse(fmt.Sprintf("http://%s/stats", self.aggregatorHostPort), nil, &response); err != nil {
 		return map[string]Node{}, err
 	}
 
@@ -33,10 +30,10 @@ func (self *realAggregator) GetClusterInfo() (map[string]Node, error) {
 	return result, nil
 }
 
-func New() (Aggregator, error) {
-	if *argAggregatorAddress == "" || len(strings.Split(*argAggregatorAddress, ":")) != 2 {
-		return nil, fmt.Errorf("Arrgregator address invalid: %s", *argAggregatorAddress)
+func New(aggregatorHostPort string) (Aggregator, error) {
+	if aggregatorHostPort == "" || len(strings.Split(aggregatorHostPort, ":")) != 2 {
+		return nil, fmt.Errorf("Arrgregator address invalid: %s", aggregatorHostPort)
 	}
 
-	return &realAggregator{*argAggregatorAddress}, nil
+	return &realAggregator{aggregatorHostPort}, nil
 }

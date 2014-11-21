@@ -1,10 +1,10 @@
 package actuator
 
 import (
-	"flag"
 	"fmt"
 	"strings"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/provisioner"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/scaler/types"
 )
@@ -13,10 +13,8 @@ type realActuator struct {
 	serviceHostPort string
 }
 
-var argActuatorHostPort = flag.String("actuator_hostport", "localhost:8080", "Actuator Host:Port.")
-
 func (self *realActuator) GetNodeShapes() (NodeShapes, error) {
-	var response []string
+	var response map[string]api.NodeResources
 	if err := types.PostRequestAndGetResponse(fmt.Sprintf("http://%s/instance_types", self.serviceHostPort), nil, &response); err != nil {
 		return NodeShapes{}, err
 	}
@@ -25,24 +23,22 @@ func (self *realActuator) GetNodeShapes() (NodeShapes, error) {
 		return NodeShapes{}, fmt.Errorf("no node shapes returned by actuator.")
 	}
 	nodeShapes := newNodeShapes()
-	for _, shape := range response {
-		nodeShapes.add(NodeShape{Name: shape})
+	for shape, resources := range response {
+		capacity := types.Resource{
+			Cpu:    uint64(resources.Capacity["cpu"].IntVal),
+			Memory: uint64(resources.Capacity["memory"].IntVal),
+		}
+		nodeShapes.add(capacity, shape)
 	}
 
 	return nodeShapes, nil
 }
 
-func (self *realActuator) GetDefaultNodeShape() (NodeShape, error) {
+func (self *realActuator) GetDefaultNodeShape() (string, error) {
 	var response string
-	if err := types.PostRequestAndGetResponse(fmt.Sprintf("http://%s/instance_types/default", self.serviceHostPort), nil, &response); err != nil {
-		return NodeShape{}, err
-	}
+	err := types.PostRequestAndGetResponse(fmt.Sprintf("http://%s/instance_types/default", self.serviceHostPort), nil, &response)
 
-	if response == "" {
-		return NodeShape{}, fmt.Errorf("default node shape returned by actuator is empty.")
-	}
-
-	return NodeShape{Name: response}, nil
+	return response, err
 }
 
 func (self *realActuator) CreateNode(nodeShapeName string) (string, error) {
@@ -61,13 +57,13 @@ func (self *realActuator) CreateNode(nodeShapeName string) (string, error) {
 	return response[0].Name, nil
 }
 
-func New() (Actuator, error) {
-	if *argActuatorHostPort == "" {
+func New(actuatorHostPort string) (Actuator, error) {
+	if actuatorHostPort == "" {
 		return nil, fmt.Errorf("actuator host port empty.")
 	}
-	if len(strings.Split(*argActuatorHostPort, ":")) != 2 {
-		return nil, fmt.Errorf("actuator host port invalid - %s.", *argActuatorHostPort)
+	if len(strings.Split(actuatorHostPort, ":")) != 2 {
+		return nil, fmt.Errorf("actuator host port invalid - %s.", actuatorHostPort)
 	}
 
-	return &realActuator{*argActuatorHostPort}, nil
+	return &realActuator{actuatorHostPort}, nil
 }
