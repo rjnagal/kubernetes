@@ -33,6 +33,7 @@ type Aggregator interface {
 	Stop() error
 
 	// Get usage stats summary for the whole node.
+	// Returns a map with hostname as key and NodeData as value.
 	GetNodeStats() (map[string]NodeData, error)
 }
 
