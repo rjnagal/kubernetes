@@ -15,7 +15,6 @@
 package statscollector
 
 import (
-	"flag"
 	"fmt"
 	"sync"
 	"time"
@@ -23,7 +22,8 @@ import (
 	"github.com/golang/glog"
 )
 
-var pollInterval = flag.Duration("poll_interval", 1*time.Minute, "Interval between polling a node.")
+// We poll each node for stats every minute.
+const pollInterval = 1 * time.Minute
 
 type Aggregator interface {
 	// Start polling.
@@ -93,7 +93,7 @@ func (self *aggregator) doUpdate() {
 }
 
 func (self *aggregator) periodicHousekeeping(quit chan error) {
-	ticker := time.Tick(*pollInterval)
+	ticker := time.Tick(pollInterval)
 	for {
 		select {
 		case <-ticker:
