@@ -1,7 +1,6 @@
 package scaler
 
 import (
-	"flag"
 	"fmt"
 	"time"
 
@@ -11,19 +10,9 @@ import (
 	"github.com/golang/glog"
 )
 
-// TODO(vishh): Move all the flags to the main function and keep this package free of flags.
-var argHousekeepingTick = flag.Duration("housekeeping", 10*time.Minute, "Housekeeping duration.")
-
-var argThreshold = flag.Uint("cluster_threshold", 90, "Percentage of cluster resource usage beyond which the cluster size will be increased.")
-
-// TODO(vishh): Consider replacing minute/hour/day with intent - aggresive/moderate/conservative.
-var argScalingPolicy = flag.String("cluster_scaling_policy", "hour", "Cluster nodes will be scaled based on usage for the last minute, hour or day. Choose between 'minute' (aggresive), 'hour' (moderate) and 'day' (conservative).")
-
-var argActuatorHostPort = flag.String("actuator_hostport", "localhost:8080", "Actuator Host:Port.")
-
-var argAggregatorHostPort = flag.String("aggregator_hostport", "localhost:8085", "Aggregator Host:Port.")
-
 type realAutoScaler struct {
+	// Housekeeping duration.
+	housekeeping time.Duration
 	// A map of policy name to Policy
 	policies         map[string]Policy
 	nodeShapes       actuator.NodeShapes
@@ -43,7 +32,7 @@ func (self *realAutoScaler) AutoScale() error {
 			glog.Error(err)
 		}
 		// Sleep for housekeeping duration.
-		time.Sleep(*argHousekeepingTick)
+		time.Sleep(self.housekeeping)
 	}
 	return nil
 }
@@ -99,12 +88,16 @@ func (self *realAutoScaler) applyPolicies(hostnameToNodesMap map[string]aggregat
 	return cluster, nil
 }
 
-func New() (Scaler, error) {
-	myActuator, err := actuator.New(*argActuatorHostPort)
+func New(housekeeping time.Duration,
+	actuatorHostPort,
+	aggregatorHostPort,
+	clusterScalingPolicy string,
+	clusterScalingThreshold uint) (Scaler, error) {
+	myActuator, err := actuator.New(actuatorHostPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create actuator %q", err)
 	}
-	myAggregator, err := aggregator.New(*argAggregatorHostPort)
+	myAggregator, err := aggregator.New(aggregatorHostPort)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +116,7 @@ func New() (Scaler, error) {
 	}
 	glog.V(2).Infof("Default node shape is: %v", defaultNodeShape)
 	// List policies in the order of increasing priority
-	clusterPolicy, err := newClusterUsagePolicy(*argThreshold, *argScalingPolicy)
+	clusterPolicy, err := newClusterUsagePolicy(clusterScalingThreshold, clusterScalingPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +125,7 @@ func New() (Scaler, error) {
 	}
 
 	return &realAutoScaler{
+		housekeeping:     housekeeping,
 		policies:         policies,
 		aggregator:       myAggregator,
 		actuator:         myActuator,
