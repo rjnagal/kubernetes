@@ -38,7 +38,7 @@ type kubeCluster struct {
 
 func NewCluster(kubeMasterAddress string) (Cluster, error) {
 	if len(kubeMasterAddress) == 0 {
-		return nil, fmt.Errorf("Kubernetes master readonly API not specified.")
+		return nil, fmt.Errorf("Kubernetes master readonly IP not specified.")
 	}
 	kubeClient := kube_client.NewOrDie(&kube_client.Config{
 		Host:     "http://" + kubeMasterAddress,
