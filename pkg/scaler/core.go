@@ -11,6 +11,18 @@ import (
 	"github.com/golang/glog"
 )
 
+// TODO(vishh): Move all the flags to the main function and keep this package free of flags.
+var argHousekeepingTick = flag.Duration("housekeeping", 10*time.Minute, "Housekeeping duration.")
+
+var argThreshold = flag.Uint("cluster_threshold", 90, "Percentage of cluster resource usage beyond which the cluster size will be increased.")
+
+// TODO(vishh): Consider replacing minute/hour/day with intent - aggresive/moderate/conservative.
+var argScalingPolicy = flag.String("cluster_policy", "hour", "Cluster nodes will be scaled based on usage for the last minute, hour or day. Choose between 'minute' (aggresive), 'hour' (moderate) and 'day' (conservative).")
+
+var argActuatorHostPort = flag.String("actuator_hostport", "localhost:8080", "Actuator Host:Port.")
+
+var argAggregatorHostPort = flag.String("aggregator_hostport", "localhost:8085", "Aggregator Host:Port.")
+
 type realAutoScaler struct {
 	// A map of policy name to Policy
 	policies         map[string]Policy
@@ -23,8 +35,6 @@ type realAutoScaler struct {
 	// Map of hostname to shape type.
 	newNodes map[string]string
 }
-
-var argHousekeepingTick = flag.Duration("housekeeping", 10*time.Minute, "Housekeeping duration.")
 
 func (self *realAutoScaler) AutoScale() error {
 	for {
@@ -61,7 +71,7 @@ func (self *realAutoScaler) doHousekeeping() error {
 func (self *realAutoScaler) applyPolicies(hostnameToNodesMap map[string]aggregator.Node) (*Cluster, error) {
 	clusterNodes := make(map[string]Node, 0)
 	for _, node := range hostnameToNodesMap {
-		nodeShape, err := self.nodeShapes.Get(node.Capacity)
+		nodeShape, err := self.nodeShapes.GetNodeShapeWithCapacity(node.Capacity)
 		if err != nil {
 			glog.Fatal(err)
 		}
@@ -77,24 +87,24 @@ func (self *realAutoScaler) applyPolicies(hostnameToNodesMap map[string]aggregat
 
 	for title, policy := range self.policies {
 		glog.V(1).Infof("Applying policy %s", title)
-		glog.V(2).Infof("Cluster: %+v", cluster)
+		glog.V(3).Infof("Cluster: %+v", cluster)
 		err := policy.PerformScaling(cluster)
 		if err != nil {
 			// TODO(vishh): Move on to applying other policies instead.
 			return nil, err
 		}
-		glog.V(2).Infof("Cluster after applying policy %s: %+v", title, cluster)
+		glog.V(3).Infof("Cluster after applying policy %s: %+v", title, cluster)
 	}
 
 	return cluster, nil
 }
 
 func New() (Scaler, error) {
-	myActuator, err := actuator.New()
+	myActuator, err := actuator.New(*argActuatorHostPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create actuator %q", err)
 	}
-	myAggregator, err := aggregator.New()
+	myAggregator, err := aggregator.New(*argAggregatorHostPort)
 	if err != nil {
 		return nil, err
 	}
@@ -103,14 +113,22 @@ func New() (Scaler, error) {
 		return nil, fmt.Errorf("failed to get existing node shapes %q", err)
 	}
 	glog.V(2).Infof("Available node shapes are: %v", nodeShapes)
-	defaultNodeShape, err := myActuator.GetDefaultNodeShape()
+	defaultNodeShapeType, err := myActuator.GetDefaultNodeShape()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get default node shape %q", err)
 	}
+	defaultNodeShape, err := nodeShapes.GetNodeShapeWithType(defaultNodeShapeType)
+	if err != nil {
+		return nil, err
+	}
 	glog.V(2).Infof("Default node shape is: %v", defaultNodeShape)
 	// List policies in the order of increasing priority
+	clusterPolicy, err := newClusterUsagePolicy(*argThreshold, *argScalingPolicy)
+	if err != nil {
+		return nil, err
+	}
 	policies := map[string]Policy{
-		"ClusterUsage": &clusterUsagePolicy{},
+		"ClusterUsage": clusterPolicy,
 	}
 
 	return &realAutoScaler{

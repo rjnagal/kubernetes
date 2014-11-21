@@ -1,18 +1,12 @@
 package scaler
 
 import (
-	"flag"
 	"fmt"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/scaler/aggregator"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/scaler/types"
 	"github.com/golang/glog"
 )
-
-var argThreshold = flag.Uint("cluster_threshold", 90, "Percentage of cluster resource usage beyond which the cluster size will be increased.")
-
-// TODO(vishh): Consider replacing minute/hour/day with intent - aggresive/moderate/conservative.
-var argScalingPolicy = flag.String("cluster_policy", "hour", "Cluster nodes will be scaled based on usage for the last minute, hour or day. Choose between 'minute' (aggresive), 'hour' (moderate) and 'day' (conservative).")
 
 const (
 	minute int = iota
@@ -27,7 +21,7 @@ type clusterUsagePolicy struct {
 
 // Returns the percentage of value over limit.
 func PercentageOf(value, limit uint64) uint {
-	return uint(((limit - value) * 100) / limit)
+	return 100 - uint(((limit-value)*100)/limit)
 }
 
 // Returns the stats required by the scaling policy if available.
@@ -45,8 +39,10 @@ func (self *clusterUsagePolicy) getUsageBasedOnPolicy(derivedStats aggregator.De
 		if derivedStats.DayUsage.Valid {
 			return &types.Resource{derivedStats.DayUsage.Cpu.Ninety, derivedStats.DayUsage.Memory.Ninety}
 		}
+	default:
+		glog.Fatal("Invalid cluster usage policy")
 	}
-
+	glog.V(1).Infof("no usage found based on policy")
 	return nil
 }
 
@@ -54,17 +50,24 @@ func (self *clusterUsagePolicy) PerformScaling(cluster *Cluster) error {
 	nodesAboveThreshold := 0
 	stableNodes := 0
 	for _, node := range cluster.Current {
+		glog.V(1).Infof("Checking usage of node: %s", node.Hostname)
 		// TODO(vishh): Handle nodes that have been offline for a while, and hence no recent stats.
 		usage := self.getUsageBasedOnPolicy(node.Usage)
 		if usage == nil {
 			// Skipping node since latest stats are not available which happens when the node is unresponsive.
 			continue
-		} 
+		}
+		glog.V(2).Infof("Node %s usage percentage cpu: %d, memory: %d", node.Hostname, PercentageOf(usage.Cpu, node.Capacity.Cpu),
+			PercentageOf(usage.Memory, node.Capacity.Memory))
+
 		stableNodes++
+		glog.V(3).Infof("cpu usage percentage:")
 		if PercentageOf(usage.Cpu, node.Capacity.Cpu) >= self.threshold ||
 			PercentageOf(usage.Memory, node.Capacity.Memory) >= self.threshold {
 			glog.V(2).Infof("Host %s is using more than %d of its capacity", node.Hostname, self.threshold)
 			nodesAboveThreshold++
+		} else {
+			glog.V(1).Infof("Node %s is below threshold", node.Hostname)
 		}
 		cluster.Slack.Cpu += (node.Capacity.Cpu - usage.Cpu)
 		cluster.Slack.Memory += (node.Capacity.Memory - usage.Memory)
@@ -80,22 +83,26 @@ func (self *clusterUsagePolicy) PerformScaling(cluster *Cluster) error {
 	return nil
 }
 
-func newClusterUsagePolicy() (Policy, error) {
-	if *argThreshold <= 0 {
-		return nil, fmt.Errorf("Cluster scaling threshold invalid: %d", *argThreshold)
+func newClusterUsagePolicy(threshold uint, requestedScalingPolicy string) (Policy, error) {
+	if threshold <= 0 {
+		return nil, fmt.Errorf("Cluster scaling threshold invalid: %d", threshold)
 	}
 	scalingPolicy := hour
-	switch *argScalingPolicy {
+	switch requestedScalingPolicy {
 	case "minute":
 		scalingPolicy = minute
 	case "day":
 		scalingPolicy = day
+	case "hour":
+		break
 	default:
 		glog.Warningf("Cluster scaling policy not set via flag --cluster_policy. Defaulting to moderate scaling.")
 	}
 
+	glog.Infof("Cluster scaling threshold is set at %d", threshold)
+	glog.Infof("Cluster scaling policy is %s", requestedScalingPolicy)
 	return &clusterUsagePolicy{
-		threshold:     *argThreshold,
+		threshold:     threshold,
 		scalingPolicy: scalingPolicy,
 	}, nil
 }
