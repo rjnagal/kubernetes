@@ -1,14 +1,17 @@
 {
-    "id": "AutoScaler",
+    "id": "kuberscaler",
     "kind": "Pod",
     "apiVersion": "v1beta1",
     "desiredState": {
 	"manifest": {
 	    "version": "v1beta1",
-	    "id": "AutoScaler",
+	    "id": "kuberscaler",
 	    "containers": [{
 		"name": "provisioner",
 		"image": "vish/provisioner:test",
+	    }, {
+		"name": "statscollector",
+		"image": "vish/statscollector:test",
 	    }, {
 		"name": "scaler",
 		"image": "vish/scaler:test",
@@ -16,6 +19,6 @@
 	}
     },
     "labels": {
-	"service": "autoscaler",
+	"service": "kuberscaler",
     }
 }

@@ -96,7 +96,7 @@ func newClusterUsagePolicy(threshold uint, requestedScalingPolicy string) (Polic
 	case "hour":
 		break
 	default:
-		glog.Warningf("Cluster scaling policy not set via flag --cluster_policy. Defaulting to moderate scaling.")
+		glog.Warningf("Cluster scaling policy not set via flag --cluster_scaling_policy. Defaulting to moderate scaling.")
 	}
 
 	glog.Infof("Cluster scaling threshold is set at %d", threshold)
