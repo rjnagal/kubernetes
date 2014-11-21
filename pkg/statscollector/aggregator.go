@@ -22,6 +22,9 @@ import (
 	"github.com/golang/glog"
 )
 
+// We poll each node for stats every minute.
+const pollInterval = 1 * time.Minute
+
 type Aggregator interface {
 	// Start polling.
 	Start() error
@@ -40,20 +43,18 @@ type aggregator struct {
 	clusterApi       Cluster
 	nodes            map[string]NodeData
 	housekeepingChan chan error
-	pollInterval     time.Duration
 }
 
 // Create a new aggregator.
-func New(node NodeApi, cluster Cluster, pollInterval time.Duration) (Aggregator, error) {
+func New(node NodeApi, cluster Cluster) (Aggregator, error) {
 	if node == nil || cluster == nil {
 		return nil, fmt.Errorf("nil node or cluster driver.")
 	}
 
 	newAggregator := &aggregator{
-		nodes:        make(map[string]NodeData, 0),
-		nodeApi:      node,
-		clusterApi:   cluster,
-		pollInterval: pollInterval,
+		nodes:      make(map[string]NodeData, 0),
+		nodeApi:    node,
+		clusterApi: cluster,
 	}
 
 	return newAggregator, nil
@@ -92,7 +93,7 @@ func (self *aggregator) doUpdate() {
 }
 
 func (self *aggregator) periodicHousekeeping(quit chan error) {
-	ticker := time.Tick(self.pollInterval)
+	ticker := time.Tick(pollInterval)
 	for {
 		select {
 		case <-ticker:
