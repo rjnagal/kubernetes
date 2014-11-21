@@ -15,7 +15,6 @@
 package statscollector
 
 import (
-	"flag"
 	"fmt"
 	"net"
 	"strconv"
@@ -25,8 +24,6 @@ import (
 	kube_client "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/golang/glog"
 )
-
-var kubeMaster = flag.String("kubernetes_master_readonly", "", "IP for kubernetes master read-only API.")
 
 type Cluster interface {
 	GetNodesList() ([]NodeId, error)
@@ -39,12 +36,12 @@ type kubeCluster struct {
 	dataLock  sync.RWMutex
 }
 
-func NewCluster() (Cluster, error) {
-	if len(*kubeMaster) == 0 {
-		return nil, fmt.Errorf("--kubernetes_master_readonly not specified")
+func NewCluster(kubeMasterAddress string) (Cluster, error) {
+	if len(kubeMasterAddress) == 0 {
+		return nil, fmt.Errorf("Kubernetes master readonly API not specified.")
 	}
 	kubeClient := kube_client.NewOrDie(&kube_client.Config{
-		Host:     "http://" + *kubeMaster,
+		Host:     "http://" + kubeMasterAddress,
 		Version:  "v1beta1",
 		Insecure: true,
 	})

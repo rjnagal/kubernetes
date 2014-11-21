@@ -15,15 +15,12 @@
 package statscollector
 
 import (
-	"flag"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/golang/glog"
 )
-
-var pollInterval = flag.Duration("poll_interval", 1*time.Minute, "Interval between polling a node.")
 
 type Aggregator interface {
 	// Start polling.
@@ -42,18 +39,20 @@ type aggregator struct {
 	clusterApi       Cluster
 	nodes            map[string]NodeData
 	housekeepingChan chan error
+	pollInterval     time.Duration
 }
 
 // Create a new aggregator.
-func New(node NodeApi, cluster Cluster) (Aggregator, error) {
+func New(node NodeApi, cluster Cluster, pollInterval time.Duration) (Aggregator, error) {
 	if node == nil || cluster == nil {
 		return nil, fmt.Errorf("nil node or cluster driver.")
 	}
 
 	newAggregator := &aggregator{
-		nodes:      make(map[string]NodeData, 0),
-		nodeApi:    node,
-		clusterApi: cluster,
+		nodes:        make(map[string]NodeData, 0),
+		nodeApi:      node,
+		clusterApi:   cluster,
+		pollInterval: pollInterval,
 	}
 
 	return newAggregator, nil
@@ -92,7 +91,7 @@ func (self *aggregator) doUpdate() {
 }
 
 func (self *aggregator) periodicHousekeeping(quit chan error) {
-	ticker := time.Tick(*pollInterval)
+	ticker := time.Tick(self.pollInterval)
 	for {
 		select {
 		case <-ticker:

@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/statscollector"
 	"github.com/golang/glog"
@@ -29,6 +30,9 @@ import (
 var address = flag.String("address", "0.0.0.0", "The IP address for serving stats.")
 var port = flag.Int("port", 8085, "The port to listen on for connections.")
 var fake = flag.Bool("fake", false, "Use fake services.")
+var pollInterval = flag.Duration("poll_interval", 1*time.Minute, "Interval between polling stats for a node.")
+var kubeMaster = flag.String("kubernetes_master_readonly", "", "IP for kubernetes master read-only API.")
+var kubeletPort = flag.Int("kubelet_port", 10250, "Kubelet port")
 
 func writeResult(res interface{}, w http.ResponseWriter) error {
 	out, err := json.Marshal(res)
@@ -64,16 +68,16 @@ func main() {
 			glog.Fatal(err)
 		}
 	} else {
-		clusterApi, err = statscollector.NewCluster()
+		clusterApi, err = statscollector.NewCluster(*kubeMaster)
 		if err != nil {
 			glog.Fatal(err)
 		}
-		nodeApi, err = statscollector.NewKubeNodeApi()
+		nodeApi, err = statscollector.NewKubeNodeApi(*kubeletPort)
 		if err != nil {
 			glog.Fatal(err)
 		}
 	}
-	statscollector, err := statscollector.New(nodeApi, clusterApi)
+	statscollector, err := statscollector.New(nodeApi, clusterApi, *pollInterval)
 	if err != nil {
 		glog.Fatal(err)
 	}

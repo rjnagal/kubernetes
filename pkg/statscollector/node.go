@@ -16,7 +16,6 @@ package statscollector
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -33,8 +32,8 @@ import (
 const milliSecondsToNanoSeconds = 1000000
 const secondsToMilliSeconds = 1000
 
-var numStatsPerUpdate = flag.Int("num_stats_per_update", 60, "Number of (per-second) stats to retrieve on each update.")
-var kubeletPort = flag.Int("kubelet_port", 10250, "Kubelet port")
+// Number of (per-second) stats to retrieve on each update.
+const numStatsPerUpdate = 60
 
 type NodeApi interface {
 	UpdateStats(NodeId) (Resource, error)
@@ -42,10 +41,14 @@ type NodeApi interface {
 }
 
 type nodeApi struct {
+	// Kubelet port used for retrieving node stats.
+	kubeletPort int
 }
 
-func NewKubeNodeApi() (NodeApi, error) {
-	return &nodeApi{}, nil
+func NewKubeNodeApi(kubeletPort int) (NodeApi, error) {
+	return &nodeApi{
+		kubeletPort: kubeletPort,
+	}, nil
 }
 
 func GetValueFromResponse(response *http.Response, value interface{}) error {
@@ -61,13 +64,13 @@ func GetValueFromResponse(response *http.Response, value interface{}) error {
 	return nil
 }
 
-func getKubeletAddress(id NodeId) string {
-	return "http://" + id.Address + ":" + strconv.Itoa(*kubeletPort)
+func (self *nodeApi) getKubeletAddress(id NodeId) string {
+	return "http://" + id.Address + ":" + strconv.Itoa(self.kubeletPort)
 }
 
 func (self *nodeApi) MachineSpec(id NodeId) (Capacity, error) {
 	var machineInfo cadvisor.MachineInfo
-	url := getKubeletAddress(id) + "/spec"
+	url := self.getKubeletAddress(id) + "/spec"
 	resp, err := http.Get(url)
 	if err != nil {
 		return Capacity{}, err
@@ -84,11 +87,11 @@ func (self *nodeApi) MachineSpec(id NodeId) (Capacity, error) {
 	}, nil
 }
 
-func getMachineStats(id NodeId) ([]*cadvisor.ContainerStats, error) {
+func (self *nodeApi) getMachineStats(id NodeId) ([]*cadvisor.ContainerStats, error) {
 	var containerInfo cadvisor.ContainerInfo
 	values := url.Values{}
-	values.Add("num_stats", strconv.Itoa(*numStatsPerUpdate))
-	url := getKubeletAddress(id) + "/stats" + "?" + values.Encode()
+	values.Add("num_stats", strconv.Itoa(numStatsPerUpdate))
+	url := self.getKubeletAddress(id) + "/stats" + "?" + values.Encode()
 	resp, err := http.Get(url)
 	if err != nil {
 		return []*cadvisor.ContainerStats{}, err
@@ -184,7 +187,7 @@ func GetPercentiles(stats []*cadvisor.ContainerStats) (Percentiles, Percentiles)
 }
 
 func (self *nodeApi) UpdateStats(id NodeId) (Resource, error) {
-	stats, err := getMachineStats(id)
+	stats, err := self.getMachineStats(id)
 	if err != nil {
 		return Resource{}, err
 	}
