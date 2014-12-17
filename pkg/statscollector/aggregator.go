@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Interface to periodically retrieve stats from all nodes in a cluster and provide
+// aggregated summary. Current implementation report node-level stats.
+// TODO(jnagal): Extend to report pod and container level stats summary.
+
 package statscollector
 
 import (
