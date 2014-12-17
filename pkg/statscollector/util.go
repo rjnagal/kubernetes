@@ -51,42 +51,49 @@ func Get90Percentile(samples uint64Slice) uint64 {
 	return uint64(percentile)
 }
 
-// Add new sample to existing average. Round to integer.
-func GetMean(mean uint64, value uint64, count uint64) uint64 {
+// Add new sample to existing average.
+func GetMean(mean float64, value uint64, count uint64) float64 {
 	if count < 1 {
 		return 0
 	}
-	return (mean*(count-1) + value) / count
+	c := float64(count)
+	v := float64(value)
+	return (mean*(c-1) + v) / c
 }
 
 func GetPercentiles(stats []*cadvisor.ContainerStats) (Percentiles, Percentiles) {
 	lastCpu := uint64(0)
-	var lastTime time.Time
-	memorySamples := make(uint64Slice, len(stats))
-	cpuSamples := make(uint64Slice, len(stats)-1)
+	lastTime := time.Time{}
+	memorySamples := make(uint64Slice, 0, len(stats))
+	cpuSamples := make(uint64Slice, 0, len(stats)-1)
 	numSamples := 0
+	memoryMean := float64(0)
+	cpuMean := float64(0)
 	memoryPercentiles := Percentiles{}
 	cpuPercentiles := Percentiles{}
 	for _, stat := range stats {
+		var elapsed int64
+		time := stat.Timestamp
+		if !lastTime.IsZero() {
+			elapsed = time.UnixNano() - lastTime.UnixNano()
+			if elapsed < 10*milliSecondsToNanoSeconds {
+				glog.Infof("Elapsed time too small: %d ns: time now %s last %s", elapsed, time.String(), lastTime.String())
+				continue
+			}
+		}
 		numSamples++
 		cpuNs := stat.Cpu.Usage.Total
-		time := stat.Timestamp
 		// Ignore actual usage and only focus on working set.
 		memory := stat.Memory.WorkingSet
 		if memory > memoryPercentiles.Max {
 			memoryPercentiles.Max = memory
 		}
 		glog.V(2).Infof("Read sample: cpu %d, memory %d", cpuNs, memory)
-		memoryPercentiles.Mean = GetMean(memoryPercentiles.Mean, memory, uint64(numSamples))
+		memoryMean = GetMean(memoryMean, memory, uint64(numSamples))
 		memorySamples = append(memorySamples, memory)
-		if lastCpu == 0 {
+		if lastTime.IsZero() {
 			lastCpu = cpuNs
 			lastTime = time
-			continue
-		}
-		elapsed := time.UnixNano() - lastTime.UnixNano()
-		if elapsed < 10*milliSecondsToNanoSeconds {
-			glog.Infof("Elasped time too small: %d ns: time now %s last %s", elapsed, time.String(), lastTime.String())
 			continue
 		}
 		cpuRate := (cpuNs - lastCpu) * secondsToMilliSeconds / uint64(elapsed)
@@ -101,8 +108,10 @@ func GetPercentiles(stats []*cadvisor.ContainerStats) (Percentiles, Percentiles)
 		if cpuRate > cpuPercentiles.Max {
 			cpuPercentiles.Max = cpuRate
 		}
-		cpuPercentiles.Mean = GetMean(cpuPercentiles.Mean, cpuRate, uint64(numSamples-1))
+		cpuMean = GetMean(cpuMean, cpuRate, uint64(numSamples-1))
 	}
+	cpuPercentiles.Mean = uint64(cpuMean)
+	memoryPercentiles.Mean = uint64(memoryMean)
 	cpuPercentiles.Ninety = Get90Percentile(cpuSamples)
 	memoryPercentiles.Ninety = Get90Percentile(memorySamples)
 	return cpuPercentiles, memoryPercentiles
