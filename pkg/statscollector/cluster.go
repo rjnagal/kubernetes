@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Retrieves list of nodes in the cluster from kubernetes read-only API.
+
 package statscollector
 
 import (
