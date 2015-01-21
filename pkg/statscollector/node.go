@@ -13,7 +13,8 @@
 // limitations under the License.
 
 // Interface to provide machine capacity and raw stats (60 per-second samples).
-// TODO(rjnagal): Extend to retrieve pod stats.
+// TODO(rjnagal): Extend to retrieve pod stats. For pods, we would like to have a
+// crisper stat summary from cAdvisor. Needs cAdvisor changes.
 
 package statscollector
 
